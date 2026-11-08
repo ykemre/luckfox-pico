@@ -23,6 +23,8 @@ aux_source_directory(${PROJECT_SOURCE_DIR}/common/socket_server SRCS)
 aux_source_directory(${PROJECT_SOURCE_DIR}/common/param SRCS)
 aux_source_directory(${PROJECT_SOURCE_DIR}/common/system SRCS)
 aux_source_directory(${PROJECT_SOURCE_DIR}/common/rtsp SRCS)
+# Build the vendored MIT-licensed RTSP server instead of the prebuilt librtsp.a.
+aux_source_directory(${PROJECT_SOURCE_DIR}/common/rtsp/server SRCS)
 aux_source_directory(${PROJECT_SOURCE_DIR}/common/rtmp SRCS)
 aux_source_directory(${PROJECT_SOURCE_DIR}/common/osd SRCS)
 aux_source_directory(${PROJECT_SOURCE_DIR}/common/roi SRCS)
@@ -63,7 +65,8 @@ add_definitions(-DISP_HW_V32)
 # link_libraries(asan)
 
 add_executable(${PROJECT_NAME} ${SRCS})
-target_link_libraries(${PROJECT_NAME} pthread rockit rockchip_mpp rkaiq rtsp rkaudio_detect aec_bf_process wpa_client m rkmuxer freetype rockiva iconv rknnmrt rga stdc++ rksysutils rkaudio)
+target_compile_definitions(${PROJECT_NAME} PRIVATE __LINUX__)
+target_link_libraries(${PROJECT_NAME} pthread rockit rockchip_mpp rkaiq rkaudio_detect aec_bf_process wpa_client m rkmuxer freetype rockiva iconv rknnmrt rga stdc++ rksysutils rkaudio)
 
 install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)
 install(FILES rkipc-300w.ini DESTINATION share)
