@@ -478,7 +478,10 @@ int unregister_aenc_mp3(void) {
 /* Rockchip external encoder: 16 kHz mono PCM, 20 ms (320 samples). */
 typedef struct {
     OpusEncoder *encoder;
-    int frame_samples;
+    RK_U8 pcm[640];
+    RK_U32 buffered;
+    RK_U64 first_pts;
+    unsigned int debug_count;
 } RK_AENC_OPUS_CTX;
 static RK_S32 opusCodecHandle = -1;
 
@@ -499,7 +502,6 @@ static int rkaudio_opus_open(RK_VOID *encoderAttr, RK_VOID **outEncoder) {
         return RK_FAILURE;
     ctx = (RK_AENC_OPUS_CTX *)calloc(1, sizeof(*ctx));
     if (!ctx) return RK_FAILURE;
-    ctx->frame_samples = 320;
     ctx->encoder = opus_encoder_create(16000, 1, OPUS_APPLICATION_VOIP, &err);
     if (!ctx->encoder || err != OPUS_OK) {
         rkaudio_opus_close(ctx);
@@ -514,16 +516,39 @@ static int rkaudio_opus_open(RK_VOID *encoderAttr, RK_VOID **outEncoder) {
 static int rkaudio_opus_encode(RK_VOID *encoder, RK_VOID *encodeParam) {
     RK_AENC_OPUS_CTX *ctx = (RK_AENC_OPUS_CTX *)encoder;
     AUDIO_ADENC_PARAM_S *param = (AUDIO_ADENC_PARAM_S *)encodeParam;
+    RK_U32 need, take, capacity;
     int n;
-    if (!ctx || !param || !param->pu8InBuf || !param->pu8OutBuf ||
-        param->u32InLen < 640 || param->u32OutLen < 1276)
+    if (!ctx || !param || !param->pu8InBuf || !param->pu8OutBuf)
         return AENC_ENCODER_ERROR;
-    n = opus_encode(ctx->encoder, (const opus_int16 *)param->pu8InBuf,
-                    ctx->frame_samples, param->pu8OutBuf, (opus_int32)param->u32OutLen);
-    if (n < 0) return AENC_ENCODER_ERROR;
-    param->u32InLen -= 640;
+    /* The SDK's external encoder contract uses u32InLen as remaining bytes. */
+    need = sizeof(ctx->pcm) - ctx->buffered;
+    take = param->u32InLen < need ? param->u32InLen : need;
+    if (ctx->buffered == 0) ctx->first_pts = param->u64InTimeStamp;
+    if (take) memcpy(ctx->pcm + ctx->buffered, param->pu8InBuf, take);
+    ctx->buffered += take;
+    param->u32InLen -= take;
+    capacity = param->u32OutLen;
+    param->u32OutLen = 0;
+    if (ctx->buffered < sizeof(ctx->pcm)) {
+        if (ctx->debug_count++ < 4)
+            LOG_INFO("Opus PCM buffered=%u/640 remaining=%u\n",
+                     ctx->buffered, param->u32InLen);
+        return AENC_ENCODER_OK;
+    }
+    if (!capacity) {
+        if (ctx->debug_count++ < 8) LOG_ERROR("Opus output capacity zero\n");
+        return AENC_ENCODER_ERROR;
+    }
+    n = opus_encode(ctx->encoder, (const opus_int16 *)ctx->pcm, 320,
+                    param->pu8OutBuf, (opus_int32)capacity);
+    if (n < 0) {
+        if (ctx->debug_count++ < 8)
+            LOG_ERROR("Opus encode error=%d capacity=%u\n", n, capacity);
+        return AENC_ENCODER_ERROR;
+    }
+    ctx->buffered = 0;
     param->u32OutLen = (RK_U32)n;
-    param->u64OutTimeStamp = param->u64InTimeStamp;
+    param->u64OutTimeStamp = ctx->first_pts;
     return AENC_ENCODER_OK;
 }
 static int register_aenc_opus(void) {
