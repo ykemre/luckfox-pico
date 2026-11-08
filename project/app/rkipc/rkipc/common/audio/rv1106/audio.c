@@ -85,6 +85,9 @@ void *save_aenc_thread(void *ptr) {
 					rk_storage_write_audio_frame(0, buffer, pstStream.u32Len, pstStream.u64TimeStamp);
 					rk_storage_write_audio_frame(1, buffer, pstStream.u32Len, pstStream.u64TimeStamp);
 					rk_storage_write_audio_frame(2, buffer, pstStream.u32Len, pstStream.u64TimeStamp);
+					if (!strcmp(encode_type, "MP3"))
+						rkipc_rtsp_write_audio_frame(0, buffer, pstStream.u32Len,
+						                             pstStream.u64TimeStamp);
 				} else if (!strcmp(encode_type, "G711A")) {
 					rkipc_rtsp_write_audio_frame(0, buffer, pstStream.u32Len, pstStream.u64TimeStamp);
 				}
