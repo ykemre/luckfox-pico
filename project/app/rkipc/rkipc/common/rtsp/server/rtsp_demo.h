@@ -29,6 +29,7 @@ enum rtsp_codec_id {
 	RTSP_CODEC_ID_AUDIO_G726,			/*codec_data is bitrate (int)*/
 	RTSP_CODEC_ID_AUDIO_AAC,			/*codec_data is audio specific config (2bytes). frame type is ADTS*/
 	RTSP_CODEC_ID_AUDIO_MP3,			/* RFC 2250 MPEG audio */
+	RTSP_CODEC_ID_AUDIO_OPUS,			/* RFC 7587 Opus audio */
 };
 
 enum rtsp_auth_type {
