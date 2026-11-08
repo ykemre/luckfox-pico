@@ -16,6 +16,9 @@
 #include "mp3_enc_table1.h"
 #include "mp3_enc_table2.h"
 #include "mp3_enc_types.h"
+#ifdef RKIPC_ENABLE_OPUS
+#include <opus/opus.h>
+#endif
 
 #ifdef LOG_TAG
 #undef LOG_TAG
@@ -81,7 +84,9 @@ void *save_aenc_thread(void *ptr) {
 			if (buffer) {
 				// LOG_INFO("get frame data = %p, size = %d, pts is %lld, seq is %d\n", buffer,
 				//          pstStream.u32Len, pstStream.u64TimeStamp, pstStream.u32Seq);
-				if (!strcmp(encode_type, "MP2") || !strcmp(encode_type, "MP3")) {
+				if (!strcmp(encode_type, "OPUS")) {
+					rkipc_rtsp_write_audio_frame(0, buffer, pstStream.u32Len, pstStream.u64TimeStamp);
+				} else if (!strcmp(encode_type, "MP2") || !strcmp(encode_type, "MP3")) {
 					rk_storage_write_audio_frame(0, buffer, pstStream.u32Len, pstStream.u64TimeStamp);
 					rk_storage_write_audio_frame(1, buffer, pstStream.u32Len, pstStream.u64TimeStamp);
 					rk_storage_write_audio_frame(2, buffer, pstStream.u32Len, pstStream.u64TimeStamp);
@@ -468,6 +473,81 @@ int unregister_aenc_mp3(void) {
 	return 0;
 }
 
+
+#ifdef RKIPC_ENABLE_OPUS
+/* Rockchip external encoder: 16 kHz mono PCM, 20 ms (320 samples). */
+typedef struct {
+    OpusEncoder *encoder;
+    int frame_samples;
+} RK_AENC_OPUS_CTX;
+static RK_S32 opusCodecHandle = -1;
+
+static int rkaudio_opus_close(RK_VOID *encoder) {
+    RK_AENC_OPUS_CTX *ctx = (RK_AENC_OPUS_CTX *)encoder;
+    if (ctx) {
+        if (ctx->encoder) opus_encoder_destroy(ctx->encoder);
+        free(ctx);
+    }
+    return 0;
+}
+static int rkaudio_opus_open(RK_VOID *encoderAttr, RK_VOID **outEncoder) {
+    AENC_ATTR_CODEC_S *attr = (AENC_ATTR_CODEC_S *)encoderAttr;
+    RK_AENC_OPUS_CTX *ctx;
+    int err;
+    if (!attr || !outEncoder || attr->u32SampleRate != 16000 ||
+        attr->u32Channels != 1 || attr->enBitwidth != AUDIO_BIT_WIDTH_16)
+        return RK_FAILURE;
+    ctx = (RK_AENC_OPUS_CTX *)calloc(1, sizeof(*ctx));
+    if (!ctx) return RK_FAILURE;
+    ctx->frame_samples = 320;
+    ctx->encoder = opus_encoder_create(16000, 1, OPUS_APPLICATION_VOIP, &err);
+    if (!ctx->encoder || err != OPUS_OK) {
+        rkaudio_opus_close(ctx);
+        return RK_FAILURE;
+    }
+    opus_encoder_ctl(ctx->encoder, OPUS_SET_BITRATE(24000));
+    opus_encoder_ctl(ctx->encoder, OPUS_SET_COMPLEXITY(3));
+    opus_encoder_ctl(ctx->encoder, OPUS_SET_SIGNAL(OPUS_SIGNAL_VOICE));
+    *outEncoder = ctx;
+    return 0;
+}
+static int rkaudio_opus_encode(RK_VOID *encoder, RK_VOID *encodeParam) {
+    RK_AENC_OPUS_CTX *ctx = (RK_AENC_OPUS_CTX *)encoder;
+    AUDIO_ADENC_PARAM_S *param = (AUDIO_ADENC_PARAM_S *)encodeParam;
+    int n;
+    if (!ctx || !param || !param->pu8InBuf || !param->pu8OutBuf ||
+        param->u32InLen < 640 || param->u32OutLen < 1276)
+        return AENC_ENCODER_ERROR;
+    n = opus_encode(ctx->encoder, (const opus_int16 *)param->pu8InBuf,
+                    ctx->frame_samples, param->pu8OutBuf, (opus_int32)param->u32OutLen);
+    if (n < 0) return AENC_ENCODER_ERROR;
+    param->u32InLen -= 640;
+    param->u32OutLen = (RK_U32)n;
+    param->u64OutTimeStamp = param->u64InTimeStamp;
+    return AENC_ENCODER_OK;
+}
+static int register_aenc_opus(void) {
+    AENC_ENCODER_S encoder;
+    int ret;
+    memset(&encoder, 0, sizeof(encoder));
+    opusCodecHandle = -1;
+    encoder.enType = RK_AUDIO_ID_OPUS;
+    snprintf((RK_CHAR *)encoder.aszName, sizeof(encoder.aszName), "opus");
+    encoder.u32MaxFrmLen = 1276;
+    encoder.pfnOpenEncoder = rkaudio_opus_open;
+    encoder.pfnEncodeFrm = rkaudio_opus_encode;
+    encoder.pfnCloseEncoder = rkaudio_opus_close;
+    ret = RK_MPI_AENC_RegisterEncoder(&opusCodecHandle, &encoder);
+    return ret == 0 ? 0 : RK_FAILURE;
+}
+static void unregister_aenc_opus(void) {
+    if (opusCodecHandle != -1) {
+        RK_MPI_AENC_UnRegisterEncoder(opusCodecHandle);
+        opusCodecHandle = -1;
+    }
+}
+#endif
+
 int rkipc_aenc_init() {
 	AENC_CHN_ATTR_S stAencAttr;
 	const char *encode_type = rk_param_get_string("audio.0:encode_type", NULL);
@@ -658,6 +738,9 @@ int rkipc_audio_deinit() {
 	const char *encode_type = rk_param_get_string("audio.0:encode_type", NULL);
 	if (!strcmp(encode_type, "MP3"))
 		unregister_aenc_mp3();
+#ifdef RKIPC_ENABLE_OPUS
+	if (!strcmp(encode_type, "OPUS")) unregister_aenc_opus();
+#endif
 
 	return ret;
 }
