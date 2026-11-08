@@ -607,6 +607,7 @@ int rtsp_set_audio (rtsp_session_handle session, int codec_id, const uint8_t *co
 	case RTSP_CODEC_ID_AUDIO_G726:
 	case RTSP_CODEC_ID_AUDIO_AAC:
 	case RTSP_CODEC_ID_AUDIO_MP3:
+	case RTSP_CODEC_ID_AUDIO_OPUS:
 		break;
 	default:
 		err("not supported codec_id %d for audio\n", codec_id);
@@ -617,7 +618,7 @@ int rtsp_set_audio (rtsp_session_handle session, int codec_id, const uint8_t *co
 	s->artpe.pt = codec_id == RTSP_CODEC_ID_AUDIO_MP3 ? 14 : ARTP_PT_ID;
 	s->artpe.seq = 0;
 	s->artpe.ssrc = 0;
-	s->artpe.sample_rate = 8000;
+	s->artpe.sample_rate = codec_id == RTSP_CODEC_ID_AUDIO_OPUS ? 48000 : 8000;
 	memset(&s->acodec_data, 0, sizeof(s->acodec_data));
 
 	if (codec_data && data_len > 0) {
@@ -718,6 +719,9 @@ static int build_simple_sdp (struct rtsp_session *s, const char *ip, const char 
 
 	if (s->acodec_id != RTSP_CODEC_ID_NONE) {
 		switch (s->acodec_id) {
+		case RTSP_CODEC_ID_AUDIO_OPUS:
+			p += snprintf(p, maxlen - (p - sdpbuf), "m=audio 0 RTP/AVP 97\r\na=rtpmap:97 opus/48000/2\r\na=fmtp:97 sprop-stereo=0\r\n");
+			break;
 		case RTSP_CODEC_ID_AUDIO_MP3:
 			p += snprintf(p, maxlen - (p - sdpbuf), "m=audio 0 RTP/AVP 14\r\na=rtpmap:14 MPA/90000\r\n");
 			break;
@@ -2001,11 +2005,13 @@ int rtsp_tx_audio (rtsp_session_handle session, const uint8_t *frame, int len, u
 	}
 
 	switch (s->acodec_id) {
+	case RTSP_CODEC_ID_AUDIO_OPUS:
 	case RTSP_CODEC_ID_AUDIO_MP3: {
+		const int opus = s->acodec_id == RTSP_CODEC_ID_AUDIO_OPUS;
 		rtp_audio_state state = {s->artpe.seq, s->artpe.ssrc, 14};
 		struct mp3_emit_context ctx = {packets, pktsizs, 0, ARTP_MAX_NBPKTS};
-		count = rtp_audio_packetize(&state, RTP_AUDIO_MP3, frame, (size_t)len, ts,
-			90000, RTP_MAX_PKTSIZ, mp3_emit_packet, &ctx);
+		count = rtp_audio_packetize(&state, opus ? RTP_AUDIO_OPUS : RTP_AUDIO_MP3, frame, (size_t)len, ts,
+			opus ? 48000 : 90000, RTP_MAX_PKTSIZ, mp3_emit_packet, &ctx);
 		if (count <= 0) return -1;
 		s->artpe.seq = state.sequence;
 		break;
