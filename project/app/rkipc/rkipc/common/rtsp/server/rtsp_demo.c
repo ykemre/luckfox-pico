@@ -15,6 +15,7 @@
 #include "rtsp_demo.h"
 #include "rtsp_msg.h"
 #include "rtp_enc.h"
+#include "../rtp_audio.h"
 #include "queue.h"
 #include "stream_queue.h"
 #include "utils.h"
@@ -605,6 +606,7 @@ int rtsp_set_audio (rtsp_session_handle session, int codec_id, const uint8_t *co
 	case RTSP_CODEC_ID_AUDIO_G711U:
 	case RTSP_CODEC_ID_AUDIO_G726:
 	case RTSP_CODEC_ID_AUDIO_AAC:
+	case RTSP_CODEC_ID_AUDIO_MP3:
 		break;
 	default:
 		err("not supported codec_id %d for audio\n", codec_id);
@@ -612,7 +614,7 @@ int rtsp_set_audio (rtsp_session_handle session, int codec_id, const uint8_t *co
 	}
 
 	s->acodec_id = codec_id;
-	s->artpe.pt = ARTP_PT_ID;
+	s->artpe.pt = codec_id == RTSP_CODEC_ID_AUDIO_MP3 ? 14 : ARTP_PT_ID;
 	s->artpe.seq = 0;
 	s->artpe.ssrc = 0;
 	s->artpe.sample_rate = 8000;
@@ -716,6 +718,9 @@ static int build_simple_sdp (struct rtsp_session *s, const char *ip, const char 
 
 	if (s->acodec_id != RTSP_CODEC_ID_NONE) {
 		switch (s->acodec_id) {
+		case RTSP_CODEC_ID_AUDIO_MP3:
+			p += snprintf(p, maxlen - (p - sdpbuf), "m=audio 0 RTP/AVP 14\r\na=rtpmap:14 MPA/90000\r\n");
+			break;
 		case RTSP_CODEC_ID_AUDIO_G711A:
 			p += rtsp_build_sdp_media_attr_g711a(ARTP_PT_ID, s->artpe.sample_rate, 
 					p, maxlen - (p - sdpbuf));
@@ -1945,6 +1950,16 @@ int rtsp_tx_video (rtsp_session_handle session, const uint8_t *frame, int len, u
 	return len;
 }
 
+struct mp3_emit_context { uint8_t **packets; int *sizes; int count; int max_count; };
+static int mp3_emit_packet(const uint8_t *packet, size_t len, void *opaque)
+{
+	struct mp3_emit_context *ctx = (struct mp3_emit_context *)opaque;
+	if (ctx->count >= ctx->max_count || !ctx->packets[ctx->count] || len > RTP_MAX_PKTSIZ) return -1;
+	memcpy(ctx->packets[ctx->count], packet, len);
+	ctx->sizes[ctx->count++] = (int)len;
+	return 0;
+}
+
 int rtsp_tx_audio (rtsp_session_handle session, const uint8_t *frame, int len, uint64_t ts)
 {
 	struct rtsp_session *s = (struct rtsp_session*) session;
@@ -1986,6 +2001,15 @@ int rtsp_tx_audio (rtsp_session_handle session, const uint8_t *frame, int len, u
 	}
 
 	switch (s->acodec_id) {
+	case RTSP_CODEC_ID_AUDIO_MP3: {
+		rtp_audio_state state = {s->artpe.seq, s->artpe.ssrc, 14};
+		struct mp3_emit_context ctx = {packets, pktsizs, 0, ARTP_MAX_NBPKTS};
+		count = rtp_audio_packetize(&state, RTP_AUDIO_MP3, frame, (size_t)len, ts,
+			90000, RTP_MAX_PKTSIZ, mp3_emit_packet, &ctx);
+		if (count <= 0) return -1;
+		s->artpe.seq = state.sequence;
+		break;
+	}
 	case RTSP_CODEC_ID_AUDIO_G711A:
 	case RTSP_CODEC_ID_AUDIO_G711U:
 		count = rtp_enc_g711(&s->artpe, frame, len, ts, packets, pktsizs);
