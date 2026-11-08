@@ -565,8 +565,19 @@ int rkipc_aenc_init() {
 		stAencAttr.stCodecAttr.u32Resv[0] = 1152;
 		stAencAttr.stCodecAttr.u32Resv[1] = 160000;
 		register_aenc_mp3();
+	} else if (!strcmp(encode_type, "OPUS")) {
+#ifdef RKIPC_ENABLE_OPUS
+		stAencAttr.enType = RK_AUDIO_ID_OPUS;
+		stAencAttr.stCodecAttr.enType = RK_AUDIO_ID_OPUS;
+		stAencAttr.stCodecAttr.u32Resv[0] = 320;
+		if (register_aenc_opus() != 0) return RK_FAILURE;
+#else
+		LOG_ERROR("Opus library not linked\n");
+		return RK_FAILURE;
+#endif
 	} else {
 		LOG_ERROR("not support %s\n", encode_type);
+		return RK_FAILURE;
 	}
 	stAencAttr.stCodecAttr.u32Channels = rk_param_get_int("audio.0:channels", 2);
 	stAencAttr.stCodecAttr.u32SampleRate = rk_param_get_int("audio.0:sample_rate", 16000);
