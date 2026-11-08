@@ -615,7 +615,7 @@ int rtsp_set_audio (rtsp_session_handle session, int codec_id, const uint8_t *co
 	}
 
 	s->acodec_id = codec_id;
-	s->artpe.pt = codec_id == RTSP_CODEC_ID_AUDIO_MP3 ? 14 : ARTP_PT_ID;
+	s->artpe.pt = codec_id == RTSP_CODEC_ID_AUDIO_MP3 ? 14 : (codec_id == RTSP_CODEC_ID_AUDIO_OPUS ? 97 : ARTP_PT_ID);
 	s->artpe.seq = 0;
 	s->artpe.ssrc = 0;
 	s->artpe.sample_rate = codec_id == RTSP_CODEC_ID_AUDIO_OPUS ? 48000 : 8000;
@@ -2008,7 +2008,7 @@ int rtsp_tx_audio (rtsp_session_handle session, const uint8_t *frame, int len, u
 	case RTSP_CODEC_ID_AUDIO_OPUS:
 	case RTSP_CODEC_ID_AUDIO_MP3: {
 		const int opus = s->acodec_id == RTSP_CODEC_ID_AUDIO_OPUS;
-		rtp_audio_state state = {s->artpe.seq, s->artpe.ssrc, 14};
+		rtp_audio_state state = {s->artpe.seq, s->artpe.ssrc, (uint8_t)(opus ? 97 : 14)};
 		struct mp3_emit_context ctx = {packets, pktsizs, 0, ARTP_MAX_NBPKTS};
 		count = rtp_audio_packetize(&state, opus ? RTP_AUDIO_OPUS : RTP_AUDIO_MP3, frame, (size_t)len, ts,
 			opus ? 48000 : 90000, RTP_MAX_PKTSIZ, mp3_emit_packet, &ctx);
