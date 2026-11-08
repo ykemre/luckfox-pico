@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 #include "common.h"
-#include "rtsp_demo.h"
+#include "server/rtsp_demo.h"
 
 #ifdef LOG_TAG
 #undef LOG_TAG
@@ -20,7 +20,7 @@ int rkipc_rtsp_init(const char *rtsp_url_0, const char *rtsp_url_1, const char *
 
 	LOG_DEBUG("start\n");
 	pthread_mutex_lock(&g_rtsp_mutex);
-	g_rtsplive = create_rtsp_demo(554);
+	g_rtsplive = rtsp_new_demo(554);
 	if (rtsp_url_0) {
 		g_rtsp_session_0 = rtsp_new_session(g_rtsplive, rtsp_url_0);
 		tmp_output_data_type = rk_param_get_string("video.0:output_data_type", "H.264");
@@ -31,14 +31,9 @@ int rkipc_rtsp_init(const char *rtsp_url_0, const char *rtsp_url_1, const char *
 		else
 			LOG_DEBUG("0 tmp_output_data_type is %s, not support\n", tmp_output_data_type);
 		rtsp_sync_video_ts(g_rtsp_session_0, rtsp_get_reltime(), rtsp_get_ntptime());
-		if (!strcmp(rk_param_get_string("audio.0:encode_type", "G711A"), "MP3"))
-			rtsp_set_audio(g_rtsp_session_0, RTSP_CODEC_ID_AUDIO_MP3, NULL, 0);
-		else
-			rtsp_set_audio(g_rtsp_session_0, RTSP_CODEC_ID_AUDIO_G711A, NULL, 0);
+		rtsp_set_audio(g_rtsp_session_0, RTSP_CODEC_ID_AUDIO_G711A, NULL, 0); /* MP3 pending server packetizer integration */
 		rtsp_sync_audio_ts(g_rtsp_session_0, rtsp_get_reltime(), rtsp_get_ntptime());
-		rtsp_set_audio_sample_rate(g_rtsp_session_0,
-		                           rk_param_get_int("audio.0:sample_rate", 16000));
-		rtsp_set_audio_channels(g_rtsp_session_0, rk_param_get_int("audio.0:channels", 2));
+		/* Sample rate and channels are configured in the vendored server's codec SDP. */
 	}
 	if (rtsp_url_1) {
 		g_rtsp_session_1 = rtsp_new_session(g_rtsplive, rtsp_url_1);
@@ -50,14 +45,9 @@ int rkipc_rtsp_init(const char *rtsp_url_0, const char *rtsp_url_1, const char *
 		else
 			LOG_DEBUG("1 tmp_output_data_type is %s, not support\n", tmp_output_data_type);
 		rtsp_sync_video_ts(g_rtsp_session_1, rtsp_get_reltime(), rtsp_get_ntptime());
-		if (!strcmp(rk_param_get_string("audio.0:encode_type", "G711A"), "MP3"))
-			rtsp_set_audio(g_rtsp_session_1, RTSP_CODEC_ID_AUDIO_MP3, NULL, 0);
-		else
-			rtsp_set_audio(g_rtsp_session_1, RTSP_CODEC_ID_AUDIO_G711A, NULL, 0);
+		rtsp_set_audio(g_rtsp_session_1, RTSP_CODEC_ID_AUDIO_G711A, NULL, 0); /* MP3 pending server packetizer integration */
 		rtsp_sync_audio_ts(g_rtsp_session_1, rtsp_get_reltime(), rtsp_get_ntptime());
-		rtsp_set_audio_sample_rate(g_rtsp_session_1,
-		                           rk_param_get_int("audio.0:sample_rate", 16000));
-		rtsp_set_audio_channels(g_rtsp_session_1, rk_param_get_int("audio.0:channels", 2));
+		/* Sample rate and channels are configured in the vendored server's codec SDP. */
 	}
 	if (rtsp_url_2) {
 		g_rtsp_session_2 = rtsp_new_session(g_rtsplive, rtsp_url_2);
@@ -69,14 +59,9 @@ int rkipc_rtsp_init(const char *rtsp_url_0, const char *rtsp_url_1, const char *
 		else
 			LOG_DEBUG("2 tmp_output_data_type is %s, not support\n", tmp_output_data_type);
 		rtsp_sync_video_ts(g_rtsp_session_2, rtsp_get_reltime(), rtsp_get_ntptime());
-		if (!strcmp(rk_param_get_string("audio.0:encode_type", "G711A"), "MP3"))
-			rtsp_set_audio(g_rtsp_session_2, RTSP_CODEC_ID_AUDIO_MP3, NULL, 0);
-		else
-			rtsp_set_audio(g_rtsp_session_2, RTSP_CODEC_ID_AUDIO_G711A, NULL, 0);
+		rtsp_set_audio(g_rtsp_session_2, RTSP_CODEC_ID_AUDIO_G711A, NULL, 0); /* MP3 pending server packetizer integration */
 		rtsp_sync_audio_ts(g_rtsp_session_2, rtsp_get_reltime(), rtsp_get_ntptime());
-		rtsp_set_audio_sample_rate(g_rtsp_session_2,
-		                           rk_param_get_int("audio.0:sample_rate", 16000));
-		rtsp_set_audio_channels(g_rtsp_session_2, rk_param_get_int("audio.0:channels", 2));
+		/* Sample rate and channels are configured in the vendored server's codec SDP. */
 	}
 
 	pthread_mutex_unlock(&g_rtsp_mutex);
